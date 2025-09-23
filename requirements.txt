@@ -1,0 +1,15 @@
+# Core dependencies
+click>=8.0.0          # CLI framework
+phonenumbers>=8.13.0  # Phone number validation and formatting
+pandas>=1.5.0         # Data manipulation for CSV/Excel support
+tqdm>=4.64.0          # Progress bars
+colorama>=0.4.4       # Colored terminal output
+
+# Optional dependencies for extended formats
+openpyxl>=3.1.0       # Excel file support
+vobject>=0.9.6        # vCard creation and parsing
+
+# Development dependencies (optional)
+pytest>=7.0.0         # Testing framework
+black>=22.0.0         # Code formatting
+flake8>=5.0.0         # Linting

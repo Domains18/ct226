@@ -1,0 +1,51 @@
+# Contact Importer Configuration
+
+# Default settings
+defaults:
+  output_format: "vcf"  # vcf, csv, json
+  country_code: "KE"    # ISO 3166-1 alpha-2 country code
+  output_filename: "imported_contacts"
+  duplicate_handling: "skip"  # skip, merge, overwrite
+  
+# Phone number formatting
+phone_formatting:
+  # Remove common separators and formatting
+  remove_chars: ["-", "(", ")", " ", "."]
+  # Default international format
+  international_format: true
+  # Add country code if missing
+  auto_add_country_code: true
+
+# Output settings
+output:
+  vcf:
+    version: "3.0"  # vCard version
+    encoding: "utf-8"
+    include_organization: false
+  csv:
+    delimiter: ","
+    include_headers: true
+    encoding: "utf-8"
+  json:
+    pretty_print: true
+    encoding: "utf-8"
+
+# Validation settings
+validation:
+  strict_mode: false  # If true, invalid numbers will cause errors
+  min_length: 7       # Minimum phone number length
+  max_length: 15      # Maximum phone number length
+  
+# Logging
+logging:
+  level: "INFO"       # DEBUG, INFO, WARNING, ERROR
+  log_file: "contact_importer.log"
+  console_output: true
+
+# Common country codes for reference
+country_codes:
+  KE: "+254"  # Kenya
+  US: "+1"    # United States
+  UK: "+44"   # United Kingdom
+  IN: "+91"   # India
+  NG: "+234"  # Nigeria
