@@ -4,6 +4,8 @@ phonenumbers>=8.13.0  # Phone number validation and formatting
 pandas>=1.5.0         # Data manipulation for CSV/Excel support
 tqdm>=4.64.0          # Progress bars
 colorama>=0.4.4       # Colored terminal output
+telethon>=1.30.0      # Telegram client library
+cryptg>=0.4.0         # Faster encryption for telethon
 
 # Optional dependencies for extended formats
 openpyxl>=3.1.0       # Excel file support

@@ -1,15 +1,16 @@
 """Configuration management for Contact Importer."""
 
 import os
-import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Optional
+
+import yaml
 
 
 class Config:
     """Configuration manager for the Contact Importer."""
     
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path or self._get_default_config_path()
         self.config = self._load_config()
     

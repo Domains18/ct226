@@ -1,23 +1,36 @@
-# Contact Importer Makefile
+# Telegram Contact Importer Makefile
 
-.PHONY: install dev-install test lint format clean run help
+.PHONY: install setup test test-parse run preview clean help
 
 # Default target
 help:
-	@echo "Available targets:"
-	@echo "  install      - Install package and dependencies"
-	@echo "  dev-install  - Install in development mode with dev dependencies"
-	@echo "  test         - Run tests"
-	@echo "  lint         - Run linting checks"
-	@echo "  format       - Format code with black"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  run          - Run the application with sample data"
+	@echo "🚀 Telegram Contact Importer - Available Commands:"
+	@echo ""
+	@echo "Setup Commands:"
+	@echo "  setup        - Install dependencies and setup environment"
+	@echo "  install      - Install Python dependencies only"
+	@echo ""
+	@echo "Testing Commands:"
+	@echo "  test         - Run the test suite"
+	@echo "  test-parse   - Test phone number parsing only"
+	@echo ""
+	@echo "Running Commands:"
+	@echo "  run          - Run the interactive CLI application"
+	@echo "  preview      - Preview sample data file"
+	@echo ""
+	@echo "Maintenance Commands:"
+	@echo "  clean        - Clean temporary files and caches"
 	@echo "  help         - Show this help message"
 
-# Install package and dependencies
+# Full setup with dependencies and environment
+setup:
+	@echo "🚀 Setting up Telegram Contact Importer..."
+	python install.py
+
+# Install Python dependencies only
 install:
+	@echo "📦 Installing Python dependencies..."
 	pip install -r requirements.txt
-	pip install -e .
 
 # Install in development mode
 dev-install:
@@ -27,31 +40,34 @@ dev-install:
 
 # Run tests
 test:
-	python -m pytest tests/ -v
+	@echo "🧪 Running test suite..."
+	python test_setup.py
 
-# Run linting
-lint:
-	flake8 src/ --max-line-length=100
-	python -m py_compile src/*.py
+# Test phone number parsing only
+test-parse:
+	@echo "📱 Testing phone number parsing..."
+	python main.py --preview src/data/HGCS12.txt
 
-# Format code
-format:
-	black src/ --line-length=100
-	black *.py --line-length=100
-
-# Clean build artifacts
-clean:
-	rm -rf build/
-	rm -rf dist/
-	rm -rf *.egg-info/
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -f *.log
-
-# Run with sample data
+# Run the interactive CLI application
 run:
-	@echo "Creating sample phone numbers file..."
-	@echo "+254712345678\n0722334455\n254733556677\n+1-555-123-4567" > sample_phones.txt
+	@echo "🚀 Starting Telegram Contact Importer..."
+	python main.py
+
+# Preview the sample data file
+preview:
+	@echo "📄 Previewing sample data..."
+	python main.py --preview src/data/HGCS12.txt
+
+# Clean temporary files and caches
+clean:
+	@echo "🧹 Cleaning temporary files..."
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -delete
+	find . -type f -name "*.log" -delete
+	find . -type f -name "*.session" -delete
+	find . -type f -name "telegram_*.json" -delete
+	rm -rf build/ dist/ *.egg-info/
+	@echo "✅ Cleanup completed"
 	@echo "Running contact importer..."
 	python src/cli.py sample_phones.txt --verbose
 

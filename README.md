@@ -1,20 +1,36 @@
-# Contact Importer
+# 📱 Telegram Contact Importer CLI
 
-A CLI tool to import phone numbers from text files and convert them to various contact formats.
+An interactive command-line application for bulk importing phone numbers to your Telegram account. This tool is designed for legitimate contact management purposes and follows Telegram's API guidelines.
 
-## Features
+## ✨ Features
 
-- Parse plain text files with phone numbers
-- Validate and format phone numbers
-- Export to vCard (.vcf) format
-- Support for different phone number formats
-- Duplicate detection and handling
-- Progress tracking for large files
+- **Interactive CLI**: User-friendly menu system with colored output
+- **Bulk Import**: Add hundreds of contacts in batches with progress tracking
+- **Phone Validation**: Automatic phone number validation and formatting
+- **Error Handling**: Robust error handling with detailed logging
+- **Skip Duplicates**: Automatically skip existing contacts
+- **Progress Tracking**: Real-time progress bars and detailed statistics
+- **Session Management**: Persistent Telegram session management
+- **File Support**: Import from text files with various phone number formats
 
-## Installation
+## 🚀 Quick Start
+
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
+```
+
+### 2. Get Telegram API Credentials
+
+1. Go to [https://my.telegram.org/apps](https://my.telegram.org/apps)
+2. Create a new application
+3. Note down your `api_id` and `api_hash`
+
+### 3. Run the Application
+
+```bash
+python main.py
 ```
 
 ## Usage
