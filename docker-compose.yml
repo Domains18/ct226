@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  telegram-importer:
+    build: .
+    image: telegram-contact-importer:latest
+    container_name: telegram-importer
+    
+    # Interactive mode
+    stdin_open: true
+    tty: true
+    
+    # Environment variables (override in .env file)
+    environment:
+      - PYTHONUNBUFFERED=1
+    
+    # Mount volumes for persistent data
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+      # Persist Telegram session
+      - telegram-sessions:/app
+    
+    # Optional: override command
+    # command: --preview /app/data/phones.txt
+    
+    # Network mode (if needed for specific use cases)
+    # network_mode: "host"
+    
+    # Restart policy
+    restart: unless-stopped
+
+volumes:
+  telegram-sessions:
+    driver: local

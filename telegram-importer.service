@@ -1,0 +1,45 @@
+[Unit]
+Description=Telegram Contact Importer Service
+After=network.target
+Documentation=https://github.com/Domains18/ct226
+
+[Service]
+Type=simple
+
+# User and group (change these to match your setup)
+User=telegramuser
+Group=telegramuser
+
+# Working directory
+WorkingDirectory=/opt/telegram-importer
+
+# Virtual environment python
+ExecStart=/opt/telegram-importer/venv/bin/python /opt/telegram-importer/main.py
+
+# Environment variables
+Environment="PYTHONUNBUFFERED=1"
+# Uncomment and set if needed:
+# Environment="CONTACT_IMPORTER_CONFIG=/etc/telegram-importer/config.yaml"
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telegram-importer
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/telegram-importer/logs /opt/telegram-importer/data
+
+# Resource limits (optional)
+# MemoryLimit=512M
+# CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
