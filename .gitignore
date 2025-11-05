@@ -188,3 +188,5 @@ secrets/
 postgres_data/
 migration_logs/
 migration_backups/
+
+keys/*
