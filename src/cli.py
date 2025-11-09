@@ -21,6 +21,7 @@ from .config import config
 from .contact_manager import ContactManager, create_contact_manager
 from .phone_parser import parse_phone_file
 from .telegram_client import TelegramAuth, TelegramContactManager
+from .vcf_exporter import VCFExporter
 
 # Initialize colorama for cross-platform colored output
 colorama_init()
@@ -79,11 +80,12 @@ class ContactImporterCLI:
         print(f"{Fore.GREEN}📋 Main Menu:{Style.RESET_ALL}")
         print("1. 🔐 Setup/Login to Telegram")
         print("2. 📄 Preview phone numbers from file")
-        print("3. 📲 Import contacts from file")
-        print("4. ➕ Add single contact")
-        print("5. 📊 View import statistics")
-        print("6. ⚙️  Configuration")
-        print("7. 🚪 Exit")
+        print("3. 📲 Import contacts from file (via Telegram API)")
+        print("4. 📇 Export to VCF file (import to phone contacts)")
+        print("5. ➕ Add single contact")
+        print("6. 📊 View import statistics")
+        print("7. ⚙️  Configuration")
+        print("8. 🚪 Exit")
         print()
     
     async def setup_telegram_auth(self):
@@ -272,22 +274,19 @@ class ContactImporterCLI:
         # Get import options
         skip_existing = input("Skip existing contacts? (y/n, default: y): ").strip().lower()
         skip_existing = skip_existing != 'n'
-        
-        batch_size = input("Batch size (default: 50): ").strip()
-        try:
-            batch_size = int(batch_size) if batch_size else 50
-        except ValueError:
-            batch_size = 50
-        
+
+        # Set batch size to 20 by default (removed user input)
+        batch_size = 20
+
         name_prefix = input("Contact name prefix (default: 'Contact'): ").strip()
         if not name_prefix:
             name_prefix = "Contact"
-        
+
         # Confirm import
         print(f"\n{Fore.YELLOW}Import Settings:{Style.RESET_ALL}")
         print(f"File: {file_path}")
         print(f"Skip existing: {skip_existing}")
-        print(f"Batch size: {batch_size}")
+        print(f"Batch size: {batch_size} (auto)")
         print(f"Name prefix: {name_prefix}")
         
         confirm = input(f"\nProceed with import? (y/n): ").strip().lower()
@@ -297,7 +296,8 @@ class ContactImporterCLI:
         
         try:
             print(f"\n{Fore.YELLOW}Starting import...{Style.RESET_ALL}")
-            
+            print(f"{Fore.CYAN}All contacts will be prefixed with: '{name_prefix}'{Style.RESET_ALL}")
+
             with tqdm(desc="Importing contacts", unit="contact") as pbar:
                 result = await self.contact_manager.import_from_file(
                     file_path=file_path,
@@ -338,11 +338,28 @@ class ContactImporterCLI:
         if not self.contact_manager.telegram_manager.client or not self.contact_manager.telegram_manager.client.is_connected():
             print(f"{Fore.RED}❌ Connection lost! Attempting to reconnect...{Style.RESET_ALL}")
             try:
-                await self.contact_manager.telegram_manager.connect()
+                result = await self.contact_manager.telegram_manager.connect()
+                if not result:
+                    raise Exception("Reconnection failed")
                 print(f"{Fore.GREEN}✅ Reconnected{Style.RESET_ALL}")
             except Exception as e:
-                print(f"{Fore.RED}❌ Reconnection failed: {e}{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}Please restart the application and authenticate again.{Style.RESET_ALL}")
+                error_msg = str(e)
+                print(f"{Fore.RED}❌ Reconnection failed: {error_msg}{Style.RESET_ALL}")
+
+                if "bot" in error_msg.lower():
+                    print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}⚠️  BOT SESSION DETECTED!{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+                    print(f"\n{Fore.RED}Your session is using BOT credentials.{Style.RESET_ALL}")
+                    print(f"{Fore.RED}Telegram does NOT allow bots to add contacts.{Style.RESET_ALL}")
+                    print(f"\n{Fore.CYAN}To fix this:{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}1. Run: ./reset_session.sh{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}2. Restart: python main.py{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}3. Use USER credentials from https://my.telegram.org/apps{Style.RESET_ALL}")
+                    print(f"{Fore.CYAN}   (NOT bot tokens from @BotFather){Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
+                else:
+                    print(f"{Fore.YELLOW}Please restart the application and authenticate again.{Style.RESET_ALL}")
                 return
 
         print(f"{Fore.YELLOW}➕ Add Single Contact{Style.RESET_ALL}")
@@ -385,7 +402,83 @@ class ContactImporterCLI:
                 print(f"\n{Fore.CYAN}To fix:{Style.RESET_ALL}")
                 print(f"{Fore.CYAN}  ./reset_session.sh{Style.RESET_ALL}")
                 print(f"{Fore.CYAN}Then restart and use USER API credentials{Style.RESET_ALL}")
-    
+
+    def export_to_vcf(self):
+        """Export contacts to VCF file."""
+        print(f"{Fore.YELLOW}📇 Export to VCF File{Style.RESET_ALL}")
+        print()
+        print(f"{Fore.CYAN}VCF files can be imported to your phone's contact list,{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}and Telegram will automatically sync them.{Style.RESET_ALL}")
+        print()
+
+        # Get available files from data directory
+        data_files = self.get_data_files()
+
+        if data_files:
+            print(f"{Fore.GREEN}Available files in data directory:{Style.RESET_ALL}")
+            for i, file_path in enumerate(data_files, 1):
+                print(f"  {i}. {Path(file_path).name}")
+            print()
+
+            file_choice = input(f"Enter file number (1-{len(data_files)}) or custom path: ").strip()
+
+            # Check if user entered a number
+            try:
+                choice_num = int(file_choice)
+                if 1 <= choice_num <= len(data_files):
+                    file_path = data_files[choice_num - 1]
+                else:
+                    print(f"{Fore.YELLOW}Invalid number, using first file{Style.RESET_ALL}")
+                    file_path = data_files[0]
+            except ValueError:
+                # User entered a custom path
+                file_path = file_choice if file_choice else data_files[0]
+        else:
+            # Fallback to manual entry
+            default_file = "data/HGCS12.txt"
+            file_path = input(f"Enter file path (default: {default_file}): ").strip()
+            if not file_path:
+                file_path = default_file
+
+        if not os.path.exists(file_path):
+            print(f"{Fore.RED}❌ File not found: {file_path}{Style.RESET_ALL}")
+            return
+
+        # Get output file name
+        default_output = "contacts.vcf"
+        output_file = input(f"Output file name (default: {default_output}): ").strip()
+        if not output_file:
+            output_file = default_output
+
+        # Get name prefix
+        name_prefix = input("Contact name prefix (default: 'Contact'): ").strip()
+        if not name_prefix:
+            name_prefix = "Contact"
+
+        try:
+            print(f"\n{Fore.YELLOW}Exporting to VCF...{Style.RESET_ALL}")
+
+            exporter = VCFExporter()
+            result = exporter.export_from_file(file_path, output_file, name_prefix)
+
+            if result['success']:
+                print(f"\n{Fore.GREEN}✅ Export successful!{Style.RESET_ALL}")
+                print(f"Total numbers: {result['total']}")
+                print(f"Valid numbers exported: {result['valid']}")
+                print(f"Invalid numbers skipped: {result['invalid']}")
+                print(f"Output file: {result['output_file']}")
+                print(f"\n{Fore.CYAN}Next steps:{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}1. Transfer {output_file} to your phone{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}2. Open the file on your phone{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}3. Import to your phone's contacts{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}4. Telegram will automatically sync them{Style.RESET_ALL}")
+            else:
+                error = result.get('error', 'Unknown error')
+                print(f"\n{Fore.RED}❌ Export failed: {error}{Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}❌ Error exporting to VCF: {e}{Style.RESET_ALL}")
+
     def view_statistics(self):
         """View import statistics."""
         if not self.contact_manager:
@@ -481,8 +574,8 @@ class ContactImporterCLI:
         while True:
             try:
                 self.print_menu()
-                choice = input(f"{Fore.CYAN}Enter your choice (1-7): {Style.RESET_ALL}").strip()
-                
+                choice = input(f"{Fore.CYAN}Enter your choice (1-8): {Style.RESET_ALL}").strip()
+
                 if choice == '1':
                     await self.setup_telegram_auth()
                 elif choice == '2':
@@ -490,20 +583,22 @@ class ContactImporterCLI:
                 elif choice == '3':
                     await self.import_contacts_from_file()
                 elif choice == '4':
-                    await self.add_single_contact()
+                    self.export_to_vcf()
                 elif choice == '5':
-                    self.view_statistics()
+                    await self.add_single_contact()
                 elif choice == '6':
-                    self.show_configuration()
+                    self.view_statistics()
                 elif choice == '7':
+                    self.show_configuration()
+                elif choice == '8':
                     print(f"{Fore.GREEN}👋 Goodbye!{Style.RESET_ALL}")
                     if self.contact_manager and self.contact_manager.telegram_manager:
                         await self.contact_manager.telegram_manager.disconnect()
                     break
                 else:
-                    print(f"{Fore.RED}❌ Invalid choice. Please enter 1-7.{Style.RESET_ALL}")
-                
-                if choice != '7':
+                    print(f"{Fore.RED}❌ Invalid choice. Please enter 1-8.{Style.RESET_ALL}")
+
+                if choice != '8':
                     input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
                     print()
             

@@ -58,10 +58,22 @@ class PhoneParser:
     def parse_number(self, phone_str: str, line_num: Optional[int] = None) -> PhoneNumber:
         """Parse a single phone number string."""
         original = phone_str.strip()
-        
+
         # Clean the phone number
         cleaned = self._clean_phone_number(original)
-        
+
+        # If the number doesn't start with +, try adding it if it looks like an international number
+        # (numbers starting with digits that could be country codes)
+        if not cleaned.startswith('+') and len(cleaned) >= 10:
+            # Try with + prefix first (for international format without +)
+            try:
+                test_parsed = phonenumbers.parse('+' + cleaned, None)
+                if phonenumbers.is_valid_number(test_parsed):
+                    cleaned = '+' + cleaned
+            except:
+                # If that fails, continue with original cleaned number
+                pass
+
         try:
             # Parse with phonenumbers library
             parsed = phonenumbers.parse(cleaned, self.default_country)
@@ -104,21 +116,31 @@ class PhoneParser:
         chars_to_remove = self.formatting_config.get('remove_chars', [])
         for char in chars_to_remove:
             phone = phone.replace(char, '')
-        
+
+        # Auto-detect international numbers without + prefix
+        # Check if it starts with a likely country code and add + if missing
+        if not phone.startswith('+') and len(phone) >= 10:
+            # Common country code patterns
+            # Try to detect if this is an international number
+            if (phone.startswith('1') and len(phone) == 11) or \
+               (phone.startswith(('2', '3', '4', '5', '6', '7', '8', '9')) and len(phone) >= 11):
+                # Looks like international format without +
+                phone = '+' + phone
+
         # Handle Hong Kong numbers specifically
         if phone.startswith('82102'):
             # This appears to be a Hong Kong number format
             # Convert to standard Hong Kong format: +852 XXXX XXXX
             if len(phone) == 12:  # 821020123456 format
                 phone = '+852 ' + phone[5:]  # Remove 82102 prefix and add +852
-            
+
         # If no country code and auto_add_country_code is enabled
         elif self.formatting_config.get('auto_add_country_code', False):
             if not phone.startswith('+'):
                 country_code = config.get_country_code(self.default_country)
                 if country_code:
                     phone = country_code + phone
-        
+
         return phone
     
     def _extract_phone_from_line(self, line: str) -> Optional[str]:

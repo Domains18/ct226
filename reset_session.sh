@@ -15,6 +15,6 @@ fi
 echo ""
 echo "Removing session files..."
 rm -f *.session
-# rm -f telegram_config.json
+rm -f telegram_config.json
 
 echo "✅ Session files removed"

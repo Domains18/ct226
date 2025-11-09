@@ -194,3 +194,4 @@ keys/*
 contact_importer.session
 telegram_config.json
 telegram-importer.service
+contact*

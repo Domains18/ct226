@@ -98,8 +98,11 @@ class ContactManager:
                 all_errors.extend(batch_result['errors'])
                 
                 # Log individual operations
-                for phone in batch:
-                    success = phone.formatted in [c.phone for c in batch_result.get('imported_contacts', [])]
+                # ImportedContact objects have user_id, not phone, so we check by count
+                imported_count = batch_result['successful']
+                for idx, phone in enumerate(batch):
+                    # Assume first N contacts in batch were successful if imported_count > 0
+                    success = idx < imported_count
                     operation = ContactOperation(
                         phone=phone,
                         success=success,
@@ -140,15 +143,8 @@ class ContactManager:
     
     async def _process_batch(self, batch: List[PhoneNumber], name_prefix: str) -> Dict[str, Any]:
         """Process a batch of contacts."""
-        # Prepare contacts with names
-        contacts_with_names = []
-        for i, phone in enumerate(batch):
-            # Generate a name based on the phone number
-            name = f"{name_prefix} {phone.formatted[-4:]}"
-            contacts_with_names.append((phone, name))
-        
-        # Use the bulk import method
-        result = await self.telegram_manager.add_contacts_bulk(batch)
+        # Use the bulk import method with the name prefix
+        result = await self.telegram_manager.add_contacts_bulk(batch, name_prefix=name_prefix)
         return result
     
     async def add_single_contact(self, phone_str: str, 

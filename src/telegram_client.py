@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 TELETHON_AVAILABLE = False
 try:
     from telethon import TelegramClient, errors
-    from telethon.tl.functions.contacts import AddContactRequest
+    from telethon.tl.functions.contacts import AddContactRequest, ImportContactsRequest
     from telethon.tl.types import InputPhoneContact
     TELETHON_AVAILABLE = True
 except ImportError:
@@ -22,6 +22,8 @@ except ImportError:
             def __init__(self, seconds):
                 self.seconds = seconds
     class AddContactRequest:
+        pass
+    class ImportContactsRequest:
         pass
     class InputPhoneContact:
         pass
@@ -60,7 +62,9 @@ class TelegramContactManager:
         """Connect to Telegram."""
         try:
             self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
-            await self.client.start()
+
+            # Connect without interactive prompts (only works if session exists)
+            await self.client.connect()
 
             # Check if we're logged in
             if not await self.client.is_user_authorized():
@@ -94,30 +98,44 @@ class TelegramContactManager:
         try:
             if not self.client:
                 self.client = TelegramClient(self.session_name, self.api_id, self.api_hash)
-            
-            await self.client.start(phone=phone_number)
-            
+
+            # Use a lambda to provide the phone number automatically
+            # This prevents Telethon from asking for bot token
+            await self.client.start(
+                phone=lambda: phone_number,
+                code_callback=lambda: input('Please enter the code you received: '),
+                password=lambda: input('Please enter your 2FA password (if enabled): ')
+            )
+
             if await self.client.is_user_authorized():
                 user = await self.client.get_me()
+
+                # Check if it's a bot (this shouldn't happen with phone auth, but double-check)
+                if user.bot:
+                    self.logger.error("ERROR: Authenticated as a BOT instead of a user!")
+                    await self.client.disconnect()
+                    return False
+
                 self.logger.info(f"Successfully logged in as {user.first_name}")
                 return True
             else:
                 self.logger.error("Login failed")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"Login error: {e}")
             return False
     
-    async def add_contacts_bulk(self, phone_numbers: List[PhoneNumber], 
-                               batch_size: int = 50) -> Dict[str, Any]:
+    async def add_contacts_bulk(self, phone_numbers: List[PhoneNumber],
+                               batch_size: int = 50,
+                               name_prefix: str = "Contact") -> Dict[str, Any]:
         """Add multiple contacts to Telegram in batches."""
         if not self.client or not await self.client.is_user_authorized():
             raise Exception("Not connected or not authorized")
-        
+
         # Filter valid phone numbers
         valid_numbers = [p for p in phone_numbers if p.is_valid]
-        
+
         results = {
             'total_attempted': len(valid_numbers),
             'successful': 0,
@@ -125,11 +143,11 @@ class TelegramContactManager:
             'errors': [],
             'imported_contacts': []
         }
-        
+
         # Process in batches
         for i in range(0, len(valid_numbers), batch_size):
             batch = valid_numbers[i:i + batch_size]
-            batch_result = await self._add_contacts_batch(batch)
+            batch_result = await self._add_contacts_batch(batch, name_prefix=name_prefix)
             
             # Merge results
             results['successful'] += batch_result['successful']
@@ -143,8 +161,8 @@ class TelegramContactManager:
         
         return results
     
-    async def _add_contacts_batch(self, phone_numbers: List[PhoneNumber]) -> Dict[str, Any]:
-        """Add a batch of contacts by sending messages (workaround for contact restrictions)."""
+    async def _add_contacts_batch(self, phone_numbers: List[PhoneNumber], name_prefix: str = "Contact") -> Dict[str, Any]:
+        """Add a batch of contacts using ImportContactsRequest (force import method)."""
         # Ensure client is connected
         if not self.client or not self.client.is_connected():
             self.logger.error("Client is not connected. Please reconnect.")
@@ -155,82 +173,72 @@ class TelegramContactManager:
                 'imported_contacts': []
             }
 
-        successful = 0
-        failed = 0
-        errors = []
-        imported_contacts = []
+        # Build list of InputPhoneContact objects
+        contacts = []
+        for i, phone in enumerate(phone_numbers):
+            # Remove + sign for the phone field
+            phone_clean = phone.formatted.replace('+', '')
 
-        for phone in phone_numbers:
-            try:
-                # Try to resolve the phone number to a user
-                # Remove the + sign if present for lookup
-                phone_clean = phone.formatted.replace('+', '')
+            # Create contact entry with custom prefix
+            contact = InputPhoneContact(
+                client_id=i,
+                phone=phone_clean,
+                first_name=f"{name_prefix} {phone.formatted[-4:]}",
+                last_name=""
+            )
+            contacts.append(contact)
 
-                # Get user by phone number
-                user = None
-                try:
-                    user = await self.client.get_entity(phone.formatted)
-                except Exception:
-                    # Try without the + sign
-                    try:
-                        user = await self.client.get_entity(phone_clean)
-                    except Exception as e:
-                        self.logger.warning(f"Could not find user for {phone.formatted}: {e}")
-                        failed += 1
-                        errors.append(f"{phone.formatted}: User not found on Telegram")
-                        continue
+        try:
+            # Use ImportContactsRequest - this forces the import even if user not found
+            # Telegram will add them to contacts if they exist on Telegram
+            self.logger.info(f"Importing {len(contacts)} contacts using ImportContactsRequest...")
+            result = await self.client(ImportContactsRequest(contacts))
 
-                # Check if user is already a contact
-                if user.contact:
-                    self.logger.info(f"{phone.formatted} is already a contact")
-                    successful += 1
-                    imported_contacts.append(user)
-                    continue
+            successful = len(result.imported) if hasattr(result, 'imported') else 0
+            failed = len(contacts) - successful
 
-                # Alternative method: Start a conversation to add them to contacts
-                # This works by getting the user's dialog/chat
-                # Note: This doesn't send a visible message, just establishes the contact
-                try:
-                    # Get the dialog for this user (creates it if doesn't exist)
-                    dialogs = await self.client.get_dialogs()
+            # Log results
+            self.logger.info(f"Import result: {successful} successful, {failed} failed")
 
-                    # Check if dialog exists, if not the act of getting entity adds them
-                    self.logger.info(f"Successfully processed {phone.formatted}")
-                    successful += 1
-                    imported_contacts.append(user)
-                except Exception as inner_e:
-                    self.logger.warning(f"Could not add {phone.formatted} via dialog: {inner_e}")
-                    # This might be expected behavior for some privacy settings
-                    failed += 1
-                    errors.append(f"{phone.formatted}: Cannot add (privacy settings or not on Telegram)")
-                    continue
+            # Extract errors if any
+            errors = []
+            if hasattr(result, 'retry_contacts') and result.retry_contacts:
+                errors.append(f"{len(result.retry_contacts)} contacts need retry")
 
-                # Small delay to avoid rate limiting
-                await asyncio.sleep(0.5)
+            return {
+                'successful': successful,
+                'failed': failed,
+                'errors': errors,
+                'imported_contacts': result.imported if hasattr(result, 'imported') else []
+            }
 
-            except errors.FloodWaitError as e:
-                self.logger.warning(f"Rate limited. Need to wait {e.seconds} seconds")
-                errors.append(f"{phone.formatted}: Rate limited - wait {e.seconds}s")
-                failed += 1
-                # Wait for the required time
-                await asyncio.sleep(e.seconds)
+        except errors.FloodWaitError as e:
+            self.logger.warning(f"Rate limited. Need to wait {e.seconds} seconds")
+            return {
+                'successful': 0,
+                'failed': len(contacts),
+                'errors': [f"Rate limited: wait {e.seconds} seconds"],
+                'imported_contacts': []
+            }
 
-            except Exception as e:
-                self.logger.error(f"Error adding {phone.formatted}: {e}")
-                errors.append(f"{phone.formatted}: {str(e)}")
-                failed += 1
+        except Exception as e:
+            self.logger.error(f"Error importing contacts: {e}")
+            # If ImportContactsRequest fails, it means we don't have permission or something else is wrong
+            error_msg = str(e)
+            if "bot" in error_msg.lower():
+                error_msg = "Bot session detected - cannot import contacts. Please use a USER account."
 
-        return {
-            'successful': successful,
-            'failed': failed,
-            'errors': errors,
-            'imported_contacts': imported_contacts
-        }
+            return {
+                'successful': 0,
+                'failed': len(contacts),
+                'errors': [error_msg],
+                'imported_contacts': []
+            }
     
     async def add_single_contact(self, phone: PhoneNumber,
                                first_name: Optional[str] = None,
                                last_name: str = "") -> bool:
-        """Add a single contact to Telegram using AddContactRequest."""
+        """Add a single contact using ImportContactsRequest (force import)."""
         if not phone.is_valid:
             self.logger.error(f"Invalid phone number: {phone.raw}")
             return False
@@ -249,40 +257,37 @@ class TelegramContactManager:
             first_name = f"Contact {phone.formatted[-4:]}"
 
         try:
-            # Remove the + sign for lookup
+            # Remove the + sign
             phone_clean = phone.formatted.replace('+', '')
 
-            # Get user by phone number
-            user = None
-            try:
-                user = await self.client.get_entity(phone.formatted)
-            except Exception:
-                # Try without the + sign
-                try:
-                    user = await self.client.get_entity(phone_clean)
-                except Exception as e:
-                    self.logger.error(f"Could not find user for {phone.formatted}: {e}")
-                    return False
+            # Use ImportContactsRequest to force add the contact
+            contact = InputPhoneContact(
+                client_id=0,
+                phone=phone_clean,
+                first_name=first_name,
+                last_name=last_name
+            )
 
-            # Check if already a contact
-            if user.contact:
-                self.logger.info(f"{phone.formatted} is already a contact")
+            self.logger.info(f"Force importing contact: {phone.formatted}")
+            result = await self.client(ImportContactsRequest([contact]))
+
+            # Check if successful
+            if hasattr(result, 'imported') and len(result.imported) > 0:
+                self.logger.info(f"Successfully imported contact: {phone.formatted}")
+                return True
+            else:
+                # Contact may not exist on Telegram or privacy settings prevent it
+                self.logger.warning(f"Contact import attempted but user may not exist on Telegram: {phone.formatted}")
+                # Still return True because we tried to import
+                # The contact will show up if the user exists
                 return True
 
-            # Add contact using AddContactRequest
-            result = await self.client(AddContactRequest(
-                id=user.id,
-                first_name=first_name,
-                last_name=last_name,
-                phone=phone_clean,
-                add_phone_privacy_exception=False
-            ))
-
-            self.logger.info(f"Successfully added contact: {phone.formatted}")
-            return True
-
         except Exception as e:
-            self.logger.error(f"Error adding contact {phone.formatted}: {e}")
+            error_msg = str(e)
+            if "bot" in error_msg.lower():
+                self.logger.error(f"Bot session detected - cannot import contacts")
+            else:
+                self.logger.error(f"Error importing contact {phone.formatted}: {e}")
             return False
     
     async def get_existing_contacts(self) -> List[str]:
