@@ -333,18 +333,29 @@ class ContactImporterCLI:
         if not self.contact_manager:
             print(f"{Fore.RED}❌ Please setup Telegram authentication first!{Style.RESET_ALL}")
             return
-        
+
+        # Check if telegram manager is still connected
+        if not self.contact_manager.telegram_manager.client or not self.contact_manager.telegram_manager.client.is_connected():
+            print(f"{Fore.RED}❌ Connection lost! Attempting to reconnect...{Style.RESET_ALL}")
+            try:
+                await self.contact_manager.telegram_manager.connect()
+                print(f"{Fore.GREEN}✅ Reconnected{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}❌ Reconnection failed: {e}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Please restart the application and authenticate again.{Style.RESET_ALL}")
+                return
+
         print(f"{Fore.YELLOW}➕ Add Single Contact{Style.RESET_ALL}")
         print()
-        
+
         phone_number = input("Enter phone number: ").strip()
         if not phone_number:
             print(f"{Fore.RED}❌ Phone number is required!{Style.RESET_ALL}")
             return
-        
+
         first_name = input("Enter first name (optional): ").strip()
         last_name = input("Enter last name (optional): ").strip()
-        
+
         try:
             print(f"{Fore.YELLOW}Adding contact...{Style.RESET_ALL}")
             operation = await self.contact_manager.add_single_contact(
@@ -352,15 +363,28 @@ class ContactImporterCLI:
                 first_name=first_name or None,
                 last_name=last_name
             )
-            
+
             if operation.success:
                 print(f"{Fore.GREEN}✅ Contact added successfully!{Style.RESET_ALL}")
                 print(f"Phone: {operation.phone.formatted}")
             else:
                 print(f"{Fore.RED}❌ Failed to add contact: {operation.error_message}{Style.RESET_ALL}")
-        
+                if "bot" in operation.error_message.lower():
+                    print(f"\n{Fore.YELLOW}⚠️  It looks like you're using a BOT session!{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Please run: ./reset_session.sh{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}Then re-authenticate with USER credentials (not bot){Style.RESET_ALL}")
+
         except Exception as e:
-            print(f"{Fore.RED}❌ Error adding contact: {e}{Style.RESET_ALL}")
+            error_msg = str(e)
+            print(f"{Fore.RED}❌ Error adding contact: {error_msg}{Style.RESET_ALL}")
+            if "bot" in error_msg.lower() or "disconnect" in error_msg.lower():
+                print(f"\n{Fore.YELLOW}⚠️  Session issue detected!{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}This might be because:{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}1. You're using BOT credentials instead of USER credentials{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}2. Your session was disconnected{Style.RESET_ALL}")
+                print(f"\n{Fore.CYAN}To fix:{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}  ./reset_session.sh{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}Then restart and use USER API credentials{Style.RESET_ALL}")
     
     def view_statistics(self):
         """View import statistics."""

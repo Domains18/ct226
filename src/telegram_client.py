@@ -145,6 +145,16 @@ class TelegramContactManager:
     
     async def _add_contacts_batch(self, phone_numbers: List[PhoneNumber]) -> Dict[str, Any]:
         """Add a batch of contacts by sending messages (workaround for contact restrictions)."""
+        # Ensure client is connected
+        if not self.client or not self.client.is_connected():
+            self.logger.error("Client is not connected. Please reconnect.")
+            return {
+                'successful': 0,
+                'failed': len(phone_numbers),
+                'errors': ["Client not connected"],
+                'imported_contacts': []
+            }
+
         successful = 0
         failed = 0
         errors = []
@@ -223,6 +233,16 @@ class TelegramContactManager:
         """Add a single contact to Telegram using AddContactRequest."""
         if not phone.is_valid:
             self.logger.error(f"Invalid phone number: {phone.raw}")
+            return False
+
+        # Ensure client is connected
+        if not self.client or not self.client.is_connected():
+            self.logger.error("Client is not connected. Please reconnect.")
+            return False
+
+        # Verify we're authorized
+        if not await self.client.is_user_authorized():
+            self.logger.error("Not authorized. Please authenticate first.")
             return False
 
         if not first_name:
