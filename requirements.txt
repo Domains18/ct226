@@ -6,6 +6,7 @@ tqdm>=4.64.0          # Progress bars
 colorama>=0.4.4       # Colored terminal output
 telethon>=1.30.0      # Telegram client library
 cryptg>=0.4.0         # Faster encryption for telethon
+PyYAML>=6.0.0         # YAML configuration file support
 
 # Optional dependencies for extended formats
 openpyxl>=3.1.0       # Excel file support

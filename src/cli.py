@@ -138,16 +138,46 @@ class ContactImporterCLI:
             print(f"{Fore.RED}❌ Authentication failed: {e}{Style.RESET_ALL}")
             return False
     
+    def get_data_files(self) -> list:
+        """Get all .txt files from the data directory."""
+        data_dir = Path(__file__).parent.parent / "data"
+        if data_dir.exists():
+            return sorted([str(f) for f in data_dir.glob("*.txt")])
+        return []
+
     def preview_phone_numbers(self):
         """Preview phone numbers from file."""
         print(f"{Fore.YELLOW}📄 Preview Phone Numbers{Style.RESET_ALL}")
         print()
-        
-        # Get file path
-        default_file = "src/data/HGCS12.txt"
-        file_path = input(f"Enter file path (default: {default_file}): ").strip()
-        if not file_path:
-            file_path = default_file
+
+        # Get available files from data directory
+        data_files = self.get_data_files()
+
+        if data_files:
+            print(f"{Fore.GREEN}Available files in data directory:{Style.RESET_ALL}")
+            for i, file_path in enumerate(data_files, 1):
+                print(f"  {i}. {Path(file_path).name}")
+            print()
+
+            file_choice = input(f"Enter file number (1-{len(data_files)}) or custom path: ").strip()
+
+            # Check if user entered a number
+            try:
+                choice_num = int(file_choice)
+                if 1 <= choice_num <= len(data_files):
+                    file_path = data_files[choice_num - 1]
+                else:
+                    print(f"{Fore.YELLOW}Invalid number, using first file{Style.RESET_ALL}")
+                    file_path = data_files[0]
+            except ValueError:
+                # User entered a custom path
+                file_path = file_choice if file_choice else data_files[0]
+        else:
+            # Fallback to manual entry
+            default_file = "data/HGCS12.txt"
+            file_path = input(f"Enter file path (default: {default_file}): ").strip()
+            if not file_path:
+                file_path = default_file
         
         if not os.path.exists(file_path):
             print(f"{Fore.RED}❌ File not found: {file_path}{Style.RESET_ALL}")
@@ -192,20 +222,48 @@ class ContactImporterCLI:
         except Exception as e:
             print(f"{Fore.RED}❌ Error parsing file: {e}{Style.RESET_ALL}")
     
-    async def import_contacts_from_file(self):
+    async def import_contacts_from_file(self, auto_file_path: Optional[str] = None):
         """Import contacts from file."""
         if not self.contact_manager:
             print(f"{Fore.RED}❌ Please setup Telegram authentication first!{Style.RESET_ALL}")
             return
-        
+
         print(f"{Fore.YELLOW}📲 Import Contacts from File{Style.RESET_ALL}")
         print()
-        
-        # Get file path
-        default_file = "src/data/HGCS12.txt"
-        file_path = input(f"Enter file path (default: {default_file}): ").strip()
-        if not file_path:
-            file_path = default_file
+
+        # Use auto file path if provided
+        if auto_file_path:
+            file_path = auto_file_path
+            print(f"{Fore.GREEN}Auto-importing from: {file_path}{Style.RESET_ALL}")
+        else:
+            # Get available files from data directory
+            data_files = self.get_data_files()
+
+            if data_files:
+                print(f"{Fore.GREEN}Available files in data directory:{Style.RESET_ALL}")
+                for i, file_path in enumerate(data_files, 1):
+                    print(f"  {i}. {Path(file_path).name}")
+                print()
+
+                file_choice = input(f"Enter file number (1-{len(data_files)}) or custom path: ").strip()
+
+                # Check if user entered a number
+                try:
+                    choice_num = int(file_choice)
+                    if 1 <= choice_num <= len(data_files):
+                        file_path = data_files[choice_num - 1]
+                    else:
+                        print(f"{Fore.YELLOW}Invalid number, using first file{Style.RESET_ALL}")
+                        file_path = data_files[0]
+                except ValueError:
+                    # User entered a custom path
+                    file_path = file_choice if file_choice else data_files[0]
+            else:
+                # Fallback to manual entry
+                default_file = "data/HGCS12.txt"
+                file_path = input(f"Enter file path (default: {default_file}): ").strip()
+                if not file_path:
+                    file_path = default_file
         
         if not os.path.exists(file_path):
             print(f"{Fore.RED}❌ File not found: {file_path}{Style.RESET_ALL}")
@@ -351,8 +409,9 @@ class ContactImporterCLI:
     async def run(self):
         """Run the interactive CLI."""
         self.print_header()
-        
+
         # Try to reconnect if we have session data
+        auto_import_attempted = False
         if self.session_data.get('api_id') and self.session_data.get('api_hash'):
             try:
                 print(f"{Fore.YELLOW}Attempting to reconnect...{Style.RESET_ALL}")
@@ -362,10 +421,38 @@ class ContactImporterCLI:
                 )
                 if self.contact_manager:
                     print(f"{Fore.GREEN}✅ Reconnected to Telegram!{Style.RESET_ALL}")
+
+                    # Check for data files and offer auto-import
+                    data_files = self.get_data_files()
+                    if data_files:
+                        print(f"\n{Fore.CYAN}Found {len(data_files)} file(s) in data directory:{Style.RESET_ALL}")
+                        for i, file_path in enumerate(data_files, 1):
+                            print(f"  {i}. {Path(file_path).name}")
+
+                        auto_import = input(f"\n{Fore.CYAN}Auto-import contacts now? (y/n): {Style.RESET_ALL}").strip().lower()
+                        if auto_import == 'y':
+                            auto_import_attempted = True
+                            # If multiple files, ask which one
+                            if len(data_files) == 1:
+                                selected_file = data_files[0]
+                            else:
+                                file_choice = input(f"Enter file number (1-{len(data_files)}): ").strip()
+                                try:
+                                    choice_num = int(file_choice)
+                                    if 1 <= choice_num <= len(data_files):
+                                        selected_file = data_files[choice_num - 1]
+                                    else:
+                                        selected_file = data_files[0]
+                                except ValueError:
+                                    selected_file = data_files[0]
+
+                            # Start auto-import with the selected file
+                            await self.import_contacts_from_file(auto_file_path=selected_file)
+                            input(f"\n{Fore.CYAN}Press Enter to continue to main menu...{Style.RESET_ALL}")
                 else:
                     print(f"{Fore.YELLOW}⚠️  Could not reconnect automatically{Style.RESET_ALL}")
-            except Exception:
-                print(f"{Fore.YELLOW}⚠️  Could not reconnect automatically{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.YELLOW}⚠️  Could not reconnect automatically: {e}{Style.RESET_ALL}")
         
         while True:
             try:

@@ -190,3 +190,7 @@ migration_logs/
 migration_backups/
 
 keys/*
+
+contact_importer.session
+telegram_config.json
+telegram-importer.service
